@@ -1,4 +1,5 @@
 import sys
+import subprocess
 
 player = {
     "name": "",
@@ -10,16 +11,44 @@ rooms = {
     "camp": {
         "description": "A quiet camp with a warm fire. Paths lead north to the forest and east to the river.",
         "exits": {"north": "forest", "east": "river"},
+        "npc": "camp elder",
     },
     "forest": {
-        "description": "The forest is dense and full of shadows. You can hear something moving nearby.",
-        "exits": {"south": "camp", "east": "cave"},
+        "description": "The forest is dense and full of shadows. You can hear people talking in a hidden forest camp to the west.",
+        "exits": {"south": "camp", "east": "cave", "west": "forest camp"},
         "item": "magic stone",
+        "npc": "ranger",
+    },
+    "forest camp": {
+        "description": "A small forest camp with a few tents and a friendly guide. The smell of pine and cooking smoke surrounds you.",
+        "exits": {"east": "forest", "north": "clearing"},
+        "npc": "forest guide",
     },
     "river": {
         "description": "A fast river runs through the valley. The current looks strong.",
-        "exits": {"west": "camp"},
+        "exits": {"west": "camp", "east": "meadow"},
         "challenge": "cross_river",
+    },
+    "meadow": {
+        "description": "A sunny meadow dotted with wildflowers. The mountain trail begins here.",
+        "exits": {"west": "river", "north": "mountain", "south": "clearing"},
+        "item": "rope",
+    },
+    "clearing": {
+        "description": "A quiet clearing with a lantern hanging from a branch. The air feels calm.",
+        "exits": {"east": "forest", "north": "meadow"},
+        "item": "lantern",
+    },
+    "mountain": {
+        "description": "A steep mountainside with a narrow path. The air is thin and cold.",
+        "exits": {"south": "meadow", "east": "ruins"},
+        "challenge": "climb_mountain",
+    },
+    "ruins": {
+        "description": "Ancient stone ruins hidden among the peaks. Strange glyphs glow faintly.",
+        "exits": {"west": "mountain"},
+        "item": "ancient scroll",
+        "challenge": "read_scroll",
     },
     "cave": {
         "description": "A dark cave whose entrance smells of damp earth. You sense treasure inside.",
@@ -47,6 +76,8 @@ def show_status():
         item = rooms[current_room]["item"]
         if item not in player["inventory"]:
             print(f"You see a {item} here.")
+    if "npc" in rooms[current_room]:
+        print(f"You notice a {rooms[current_room]['npc']} here.")
     print(f"Health: {player['health']}")
     print(f"Inventory: {', '.join(player['inventory']) if player['inventory'] else 'empty'}")
     print("Available exits: " + ", ".join(rooms[current_room]["exits"]))
@@ -106,8 +137,60 @@ def use_item(item_name):
         player["health"] += 5
         player["inventory"].remove(item_name)
         print("You drink the healing potion and restore 5 health.")
+    elif item_name == "lantern":
+        print("You hold the lantern high. Dark places will be easier to explore.")
+    elif item_name == "rope":
+        print("You coil the rope around your pack. It may help you climb or cross rough terrain.")
+    elif item_name == "ancient scroll":
+        print("You read the ancient scroll. Its words speak of hidden paths and secret magic.")
+    elif item_name == "map":
+        print("The map shows a path to the forest camp and the hidden clearing.")
     else:
         print(f"You can't use the {item_name} here.")
+
+
+def talk():
+    room = rooms[current_room]
+    if "npc" not in room:
+        print("There is no one to talk to here.")
+        return
+    npc = room["npc"]
+    print(f"You talk with the {npc}.")
+    if current_room == "camp":
+        if "healing potion" not in player["inventory"]:
+            print("The camp elder gives you a healing potion and wishes you well.")
+            player["inventory"].append("healing potion")
+        else:
+            print("The camp elder says: 'Stay strong and listen to the forest.'")
+    elif current_room == "forest":
+        print("The ranger warns: 'The cave is dark. A lantern or a calm stone will keep you safe.'")
+    elif current_room == "forest camp":
+        if "map" not in player["inventory"]:
+            print("The forest guide offers you a map of hidden routes.")
+            player["inventory"].append("map")
+        else:
+            print("The forest guide points you toward the clearing and the mountain path.")
+    else:
+        print(f"The {npc} has nothing more to say.")
+
+
+def climb_mountain():
+    print("The mountain path is steep and rocky.")
+    if "rope" in player["inventory"]:
+        print("Using the rope, you climb safely and reach the ruins.")
+        return True
+    print("You slip on loose stones and scrape your arm. You lose 2 health.")
+    player["health"] -= 2
+    return player["health"] > 0
+
+
+def read_scroll():
+    print("The ancient glyphs glow as you enter.")
+    if "ancient scroll" in player["inventory"]:
+        print("The scroll reveals a secret: 'Light reveals what darkness hides.'")
+    else:
+        print("Without the scroll, the ruins feel empty and quiet.")
+    return True
 
 
 def game_loop():
@@ -122,7 +205,7 @@ def game_loop():
 
         show_status()
 
-        command = get_input("What do you want to do? (move/pickup/use/quit) ")
+        command = get_input("What do you want to do? (move/pickup/use/talk/quit) ")
         if command == "quit":
             print("Thanks for playing!")
             break
@@ -139,11 +222,33 @@ def game_loop():
         elif command.startswith("use "):
             item_name = command.split(" ", 1)[1]
             use_item(item_name)
+        elif command == "talk":
+            talk()
         else:
             print("I don't understand that command.")
 
     print("Goodbye, brave adventurer.")
 
 
+def launch_gui():
+    try:
+        print("Launching graphical interface...")
+        subprocess.run([sys.executable, "adventure_game_gui.py"], check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("Unable to launch the GUI. Running console mode instead.")
+        game_loop()
+
+
+def choose_interface():
+    print("Choose interface:")
+    print("1. Console")
+    print("2. GUI")
+    choice = get_input("Enter 1 or 2: ")
+    if choice == "2":
+        launch_gui()
+    else:
+        game_loop()
+
+
 if __name__ == "__main__":
-    game_loop()
+    choose_interface()
