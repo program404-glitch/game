@@ -1,10 +1,40 @@
 import sys
 import subprocess
+import random
+
+riddles = [
+    {
+        "question": "What has keys but can't open locks? ",
+        "answers": ["piano", "a piano"],
+        "success": "The chest opens! You find a healing potion and a golden coin.",
+        "failure": "The chest remains locked and a bat startles you. You lose 1 health.",
+    },
+    {
+        "question": "I have branches, but no fruit, trunk or leaves. What am I? ",
+        "answers": ["bank", "a bank"],
+        "success": "The chest opens! You find a healing potion and a golden coin.",
+        "failure": "The chest remains locked and a bat startles you. You lose 1 health.",
+    },
+    {
+        "question": "What can travel around the world while staying in a corner? ",
+        "answers": ["stamp", "a stamp"],
+        "success": "The chest opens! You find a healing potion and a golden coin.",
+        "failure": "The chest remains locked and a bat startles you. You lose 1 health.",
+    },
+]
+
+chest_rewards = {
+    "wooden chest": ["map", "golden coin"],
+    "hidden chest": ["magic stone"],
+    "iron chest": ["healing potion", "rope"],
+    "ancient chest": ["ancient scroll", "golden coin"],
+}
 
 player = {
     "name": "",
     "health": 10,
     "inventory": [],
+    "opened_chests": [],
 }
 
 rooms = {
@@ -18,11 +48,13 @@ rooms = {
         "exits": {"south": "camp", "east": "cave", "west": "forest camp"},
         "item": "magic stone",
         "npc": "ranger",
+        "chest": "wooden chest",
     },
     "forest camp": {
         "description": "A small forest camp with a few tents and a friendly guide. The smell of pine and cooking smoke surrounds you.",
         "exits": {"east": "forest", "north": "clearing"},
         "npc": "forest guide",
+        "chest": "hidden chest",
     },
     "river": {
         "description": "A fast river runs through the valley. The current looks strong.",
@@ -33,6 +65,7 @@ rooms = {
         "description": "A sunny meadow dotted with wildflowers. The mountain trail begins here.",
         "exits": {"west": "river", "north": "mountain", "south": "clearing"},
         "item": "rope",
+        "chest": "iron chest",
     },
     "clearing": {
         "description": "A quiet clearing with a lantern hanging from a branch. The air feels calm.",
@@ -49,6 +82,7 @@ rooms = {
         "exits": {"west": "mountain"},
         "item": "ancient scroll",
         "challenge": "read_scroll",
+        "chest": "ancient chest",
     },
     "cave": {
         "description": "A dark cave whose entrance smells of damp earth. You sense treasure inside.",
@@ -76,6 +110,8 @@ def show_status():
         item = rooms[current_room]["item"]
         if item not in player["inventory"]:
             print(f"You see a {item} here.")
+    if "chest" in rooms[current_room] and current_room not in player["opened_chests"]:
+        print(f"You notice a {rooms[current_room]['chest']} here.")
     if "npc" in rooms[current_room]:
         print(f"You notice a {rooms[current_room]['npc']} here.")
     print(f"Health: {player['health']}")
@@ -96,15 +132,36 @@ def cross_river():
 
 def find_treasure():
     print("A treasure chest sits in the cave. It is locked with a riddle:")
-    answer = get_input("What has keys but can't open locks? ")
-    if answer in ["piano", "a piano"]:
-        print("The chest opens! You find a healing potion and a golden coin.")
+    riddle = random.choice(riddles)
+    answer = get_input(riddle["question"])
+    if answer in riddle["answers"]:
+        print(riddle["success"])
         player["inventory"].append("healing potion")
         player["inventory"].append("golden coin")
         return True
-    print("The chest remains locked and a bat startles you. You lose 1 health.")
+    print(riddle["failure"])
     player["health"] -= 1
     return player["health"] > 0
+
+
+def open_chest():
+    current = rooms[current_room]
+    if "chest" not in current or current_room in player["opened_chests"]:
+        print("There is no chest to open here.")
+        return
+    print(f"You find a {current['chest']} here. It is locked with a riddle:")
+    riddle = random.choice(riddles)
+    answer = get_input(riddle["question"])
+    if answer in riddle["answers"]:
+        print(riddle["success"])
+        rewards = chest_rewards.get(current["chest"], ["gold coin"])
+        for reward in rewards:
+            player["inventory"].append(reward)
+            print(f"You receive: {reward}.")
+        player["opened_chests"].append(current_room)
+        return
+    print(riddle["failure"])
+    player["health"] -= 1
 
 
 def move(direction):
@@ -205,7 +262,7 @@ def game_loop():
 
         show_status()
 
-        command = get_input("What do you want to do? (move/pickup/use/talk/quit) ")
+        command = get_input("What do you want to do? (move/pickup/use/open/talk/quit) ")
         if command == "quit":
             print("Thanks for playing!")
             break
@@ -222,6 +279,8 @@ def game_loop():
         elif command.startswith("use "):
             item_name = command.split(" ", 1)[1]
             use_item(item_name)
+        elif command.startswith("open"):
+            open_chest()
         elif command == "talk":
             talk()
         else:
@@ -252,3 +311,4 @@ def choose_interface():
 
 if __name__ == "__main__":
     choose_interface()
+22
