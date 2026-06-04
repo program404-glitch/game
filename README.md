@@ -2,6 +2,12 @@ import os
 import sys
 import subprocess
 import random
+import threading
+
+try:
+    import tkinter as tk
+except ImportError:
+    tk = None
 
 riddles = [
     {
@@ -209,7 +215,7 @@ def build_map():
         f"   {mark('clearing')}\n"
         f"      |\n"
         f"{mark('camp')} - {mark('river')} - {mark('meadow')} - {mark('mountain')} - {mark('ruins')}\n"
-        f"      |        \\n"
+        f"      |\n"
         f"{mark('village')} - {mark('swamp')} - {mark('lake')} - {mark('tower')}\n"
     )
 
@@ -239,6 +245,9 @@ def ask_random_question():
 
 
 def choose_character():
+    if player["character"]:
+        return
+
     print("Choose your character class:")
     for name, data in characters.items():
         print(f"- {name.title()}: {data['description']} (Health {data['health']})")
@@ -418,7 +427,8 @@ def read_scroll():
 def game_loop():
     print("Welcome to the simple Python adventure game!")
     choose_character()
-    player["name"] = get_input("What is your name, adventurer? ") or "Traveler"
+    if not player["name"]:
+        player["name"] = get_input("What is your name, adventurer? ") or "Traveler"
     print(f"Hello, {player['name']} the {player['character'].title()}! Your journey begins now.")
 
     while True:
@@ -441,6 +451,15 @@ def game_loop():
         if command == "quit":
             print("Thanks for playing!")
             break
+        if command in ("inventory", "inv"):
+            print("Inventory:", ", ".join(player["inventory"]) if player["inventory"] else "empty")
+            continue
+        if command in ("status", "look"):
+            show_status()
+            continue
+        if command in ("help", "h", "?"):
+            print("Commands: move/pickup/use/open/talk/map/question/quit, inventory, status, help, W/A/S/D")
+            continue
         if command.startswith("move "):
             direction = command.split(" ", 1)[1]
             if move(direction):
@@ -468,27 +487,284 @@ def game_loop():
     print("Goodbye, brave adventurer.")
 
 
+class TextRedirector:
+    def __init__(self, text_widget):
+        self.text_widget = text_widget
+
+    def write(self, message):
+        if not message:
+            return
+        self.text_widget.configure(state="normal")
+        self.text_widget.insert("end", message)
+        self.text_widget.see("end")
+        self.text_widget.configure(state="disabled")
+
+    def flush(self):
+        pass
+
+
+class AdventureGUI:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Adventure Game")
+        self.root.geometry("980x560")
+
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(fill="both", expand=True)
+
+        self.output_frame = tk.Frame(main_frame)
+        self.output_frame.pack(side="left", fill="both", expand=True, padx=(10, 5), pady=10)
+
+        self.output = tk.Text(
+            self.output_frame,
+            wrap="word",
+            state="disabled",
+            bg="#111111",
+            fg="#e6e6e6",
+            padx=10,
+            pady=10,
+            font=("Consolas", 11),
+        )
+        self.scrollbar = tk.Scrollbar(self.output_frame, command=self.output.yview)
+        self.output.configure(yscrollcommand=self.scrollbar.set)
+        self.scrollbar.pack(side="right", fill="y")
+        self.output.pack(side="left", fill="both", expand=True)
+
+        self.map_frame = tk.Frame(main_frame, bg="#222222")
+        self.map_frame.pack(side="right", fill="both", padx=(5, 10), pady=10)
+        tk.Label(self.map_frame, text="Map", bg="#222222", fg="#ffffff", font=("Consolas", 12, "bold")).pack(fill="x", pady=(0, 5))
+        self.map_canvas = tk.Canvas(
+            self.map_frame,
+            bg="#1a1a1a",
+            highlightthickness=0,
+            width=340,
+            height=420,
+        )
+        self.map_canvas.pack(fill="both", expand=True)
+
+        entry_frame = tk.Frame(self.root)
+        entry_frame.pack(fill="x", padx=10, pady=8)
+
+        self.entry_var = tk.StringVar()
+        self.entry = tk.Entry(entry_frame, textvariable=self.entry_var, font=("Consolas", 11))
+        self.entry.pack(side="left", fill="x", expand=True)
+        self.entry.bind("<Return>", self.on_submit)
+
+        submit = tk.Button(entry_frame, text="Submit", command=self.on_submit)
+        submit.pack(side="right", padx=5)
+
+        self.root.bind("<KeyPress-w>", lambda event: self.send_command("w"))
+        self.root.bind("<KeyPress-W>", lambda event: self.send_command("w"))
+        self.root.bind("<KeyPress-a>", lambda event: self.send_command("a"))
+        self.root.bind("<KeyPress-A>", lambda event: self.send_command("a"))
+        self.root.bind("<KeyPress-s>", lambda event: self.send_command("s"))
+        self.root.bind("<KeyPress-S>", lambda event: self.send_command("s"))
+        self.root.bind("<KeyPress-d>", lambda event: self.send_command("d"))
+        self.root.bind("<KeyPress-D>", lambda event: self.send_command("d"))
+
+        button_frame = tk.Frame(self.root)
+        button_frame.pack(fill="x", padx=10, pady=(0, 8))
+        button_info = [
+            ("Map", "map"),
+            ("Question", "question"),
+            ("Open", "open"),
+            ("Talk", "talk"),
+            ("Status", "status"),
+            ("Inventory", "inventory"),
+            ("Help", "help"),
+        ]
+        for label, cmd in button_info:
+            tk.Button(button_frame, text=label, command=lambda c=cmd: self.insert_command(c)).pack(side="left", padx=2, pady=2)
+
+        self.input_ready = threading.Event()
+        self.response = ""
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def update_map(self):
+        self.map_canvas.delete("all")
+        positions = {
+            "forest camp": (120, 40),
+            "forest": (120, 120),
+            "cave": (240, 120),
+            "clearing": (120, 200),
+            "camp": (60, 280),
+            "river": (180, 280),
+            "meadow": (300, 280),
+            "mountain": (420, 280),
+            "ruins": (540, 280),
+            "village": (60, 360),
+            "swamp": (180, 360),
+            "lake": (300, 360),
+            "tower": (420, 360),
+        }
+
+        def draw_line(a, b):
+            x1, y1 = positions[a]
+            x2, y2 = positions[b]
+            self.map_canvas.create_line(x1, y1, x2, y2, fill="#78c0e0", width=3)
+
+        draw_line("forest camp", "forest")
+        draw_line("forest", "cave")
+        draw_line("forest", "clearing")
+        draw_line("clearing", "camp")
+        draw_line("camp", "river")
+        draw_line("river", "meadow")
+        draw_line("meadow", "mountain")
+        draw_line("mountain", "ruins")
+        draw_line("camp", "village")
+        draw_line("village", "swamp")
+        draw_line("swamp", "lake")
+        draw_line("lake", "tower")
+        draw_line("river", "lake")
+
+        for room, (x, y) in positions.items():
+            radius = 22
+            outline = "#f4f1bb"
+            fill = "#4b8f8c" if room != current_room else "#f9dc5c"
+            self.map_canvas.create_oval(x - radius, y - radius, x + radius, y + radius, fill=fill, outline=outline, width=2)
+            self.map_canvas.create_text(x, y, text=room.replace(" ", "\n"), fill="#111111" if room == current_room else "#ffffff", font=("Consolas", 9), justify="center")
+
+        self.map_canvas.create_text(170, 20, text="Current: " + current_room.title(), fill="#ffffff", font=("Consolas", 11, "bold"))
+
+    def ask_player_setup(self):
+        setup_window = tk.Toplevel(self.root)
+        setup_window.title("Player Setup")
+        setup_window.geometry("400x300")
+        setup_window.resizable(False, False)
+        setup_window.grab_set()
+
+        tk.Label(setup_window, text="Choose your name and character type", font=("Arial", 12, "bold")).pack(pady=(15, 5))
+
+        name_var = tk.StringVar(value=player.get("name", "Traveler"))
+        tk.Label(setup_window, text="Player Name:", anchor="w").pack(fill="x", padx=20, pady=(10, 0))
+        name_entry = tk.Entry(setup_window, textvariable=name_var, font=("Arial", 11))
+        name_entry.pack(fill="x", padx=20)
+        name_entry.focus_set()
+
+        class_var = tk.StringVar(value=player.get("character", "warrior") or "warrior")
+        tk.Label(setup_window, text="Character Class:", anchor="w").pack(fill="x", padx=20, pady=(15, 0))
+        for char_name, char_data in characters.items():
+            tk.Radiobutton(
+                setup_window,
+                text=f"{char_name.title()}: {char_data['description']}",
+                variable=class_var,
+                value=char_name,
+                anchor="w",
+                justify="left",
+                padx=10,
+            ).pack(fill="x", padx=20, pady=2)
+
+        result = {"submitted": False}
+
+        def submit_setup():
+            selected = class_var.get().strip().lower()
+            name_text = name_var.get().strip() or "Traveler"
+            if selected not in characters:
+                return
+            player["name"] = name_text
+            player["title"] = name_text.title()
+            player["character"] = selected
+            player["health"] = characters[selected]["health"]
+            player["inventory"] = characters[selected]["starting_items"].copy()
+            player["used_question_shield"] = False
+            player["opened_chests"] = []
+            player["used_mountain_boost"] = False
+            result["submitted"] = True
+            setup_window.destroy()
+
+        tk.Button(setup_window, text="Start Adventure", command=submit_setup, font=("Arial", 11, "bold"), bg="#4b8f8c", fg="#ffffff").pack(pady=15)
+        setup_window.protocol("WM_DELETE_WINDOW", submit_setup)
+        self.root.wait_window(setup_window)
+
+        if not result["submitted"]:
+            self.root.quit()
+            self.root.destroy()
+            sys.exit(0)
+
+        self.write(f"Created {player['title']} the {player['character'].title()} with {player['health']} health.\n")
+        if player["inventory"]:
+            self.write(f"Starting items: {', '.join(player['inventory'])}\n")
+
+    def patch_game_status(self):
+        original_show_status = show_status
+
+        def wrapped_show_status():
+            original_show_status()
+            self.update_map()
+
+        globals()["show_status"] = wrapped_show_status
+
+    def on_submit(self, event=None):
+        value = self.entry_var.get().strip()
+        if not value:
+            return
+        self.response = value
+        self.entry_var.set("")
+        self.input_ready.set()
+
+    def gui_input(self, prompt):
+        self.write(prompt)
+        self.entry.focus_set()
+        self.response = ""
+        self.input_ready.clear()
+        self.input_ready.wait()
+        return self.response.lower()
+
+    def send_command(self, command):
+        if self.input_ready.is_set():
+            return
+        self.response = command
+        self.entry_var.set(command)
+        self.input_ready.set()
+
+    def insert_command(self, command):
+        self.entry_var.set(command)
+        self.entry.focus_set()
+        self.entry.selection_range(0, "end")
+
+    def write(self, text):
+        self.output.configure(state="normal")
+        self.output.insert("end", text)
+        self.output.see("end")
+        self.output.configure(state="disabled")
+
+    def start_game(self):
+        sys.stdout = TextRedirector(self.output)
+        sys.stderr = TextRedirector(self.output)
+        globals()["get_input"] = self.gui_input
+        self.ask_player_setup()
+        self.patch_game_status()
+        self.update_map()
+        try:
+            game_loop()
+        except Exception as exc:
+            self.write(f"\nAn error occurred: {exc}\n")
+        finally:
+            self.write("\nGame over. Close this window to exit.\n")
+
+    def on_close(self):
+        self.root.quit()
+        self.root.destroy()
+        sys.exit(0)
+
+    def run(self):
+        threading.Thread(target=self.start_game, daemon=True).start()
+        self.entry.focus_set()
+        self.root.mainloop()
+
+
 def launch_gui():
-    try:
-        print("Launching graphical interface...")
-        gui_path = os.path.join(os.path.dirname(__file__), "adventure_game_gui.py")
-        subprocess.run([sys.executable, gui_path], check=True)
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        print("Unable to launch the GUI. Running console mode instead.")
+    if tk is None:
+        print("Tkinter is not available. Running console mode instead.")
         game_loop()
-
-
-def choose_interface():
-    print("Choose interface:")
-    print("1. Console")
-    print("2. GUI")
-    choice = get_input("Enter 1 or 2: ")
-    if choice == "2":
-        launch_gui()
-    else:
+        return
+    try:
+        AdventureGUI().run()
+    except Exception as exc:
+        print(f"Unable to launch the GUI ({exc}). Running console mode instead.")
         game_loop()
 
 
 if __name__ == "__main__":
-    choose_interface()
+    launch_gui()
 22
