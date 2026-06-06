@@ -166,6 +166,8 @@ rooms = {
 
 current_room = "camp"
 
+def narrate(text):
+    print(text)
 
 def get_input(prompt):
     try:
@@ -173,7 +175,6 @@ def get_input(prompt):
     except (EOFError, KeyboardInterrupt):
         print("\nGoodbye!")
         sys.exit(0)
-
 
 def show_status():
     print("\n" + "=" * 40)
@@ -199,7 +200,6 @@ Map legend: current location is marked with @
     print(build_map())
     print("=" * 40)
 
-
 def build_map():
     def mark(room):
         label = room.title()
@@ -219,10 +219,8 @@ def build_map():
         f"{mark('village')} - {mark('swamp')} - {mark('lake')} - {mark('tower')}\n"
     )
 
-
 def show_map():
     print("\n" + build_map())
-
 
 def ask_random_question():
     question = random.choice(random_questions)
@@ -242,7 +240,6 @@ def ask_random_question():
             player["used_question_shield"] = True
         else:
             player["health"] -= 1
-
 
 def choose_character():
     if player["character"]:
@@ -268,7 +265,6 @@ def choose_character():
             return
         print("That is not a valid character. Try again.")
 
-
 def cross_river():
     print("The current is strong. You need something to help you cross.")
     if "magic stone" in player["inventory"]:
@@ -277,7 +273,6 @@ def cross_river():
     print("You try to swim, but the river sweeps you downstream. You lose 2 health.")
     player["health"] -= 2
     return player["health"] > 0
-
 
 def cross_swamp():
     print("The swamp is thick and treacherous.")
@@ -291,7 +286,6 @@ def cross_swamp():
     player["health"] -= 1
     return player["health"] > 0
 
-
 def find_treasure():
     print("A treasure chest sits in the cave. It is locked with a riddle:")
     riddle = random.choice(riddles)
@@ -304,7 +298,6 @@ def find_treasure():
     print(riddle["failure"])
     player["health"] -= 1
     return player["health"] > 0
-
 
 def open_chest():
     current = rooms[current_room]
@@ -321,10 +314,10 @@ def open_chest():
             player["inventory"].append(reward)
             print(f"You receive: {reward}.")
         player["opened_chests"].append(current_room)
-        return
+        return True
     print(riddle["failure"])
     player["health"] -= 1
-
+    return player["health"] > 0
 
 def move(direction):
     global current_room
@@ -334,7 +327,6 @@ def move(direction):
         return True
     print("You can't go that way.")
     return False
-
 
 def pickup_item():
     if "item" not in rooms[current_room]:
@@ -346,7 +338,6 @@ def pickup_item():
         return
     player["inventory"].append(item)
     print(f"You take the {item}.")
-
 
 def use_item(item_name):
     if item_name not in player["inventory"]:
@@ -366,7 +357,6 @@ def use_item(item_name):
         show_map()
     else:
         print(f"You can't use the {item_name} here.")
-
 
 def talk():
     room = rooms[current_room]
@@ -400,7 +390,6 @@ def talk():
     else:
         print(f"The {npc} has nothing more to say.")
 
-
 def climb_mountain():
     print("The mountain path is steep and rocky.")
     if player["character"] == "warrior" and not player["used_mountain_boost"]:
@@ -414,7 +403,6 @@ def climb_mountain():
     player["health"] -= 2
     return player["health"] > 0
 
-
 def read_scroll():
     print("The ancient glyphs glow as you enter.")
     if "ancient scroll" in player["inventory"]:
@@ -422,7 +410,6 @@ def read_scroll():
     else:
         print("Without the scroll, the ruins feel empty and quiet.")
     return True
-
 
 def game_loop():
     print("Welcome to the simple Python adventure game!")
@@ -438,7 +425,7 @@ def game_loop():
 
         show_status()
 
-        command = get_input("What do you want to do? (move/pickup/use/open/talk/map/question/quit or W/A/S/D) ")
+        command = get_input("What do you want to do? (move/pickup/use/open/talk/map/question/quit) ")
         if command in ("w", "a", "s", "d"):
             direction = {"w": "north", "a": "west", "s": "south", "d": "east"}[command]
             if move(direction):
@@ -458,7 +445,7 @@ def game_loop():
             show_status()
             continue
         if command in ("help", "h", "?"):
-            print("Commands: move/pickup/use/open/talk/map/question/quit, inventory, status, help, W/A/S/D")
+            print("Commands: move/pickup/use/open/talk/map/question/quit, inventory, status, help")
             continue
         if command.startswith("move "):
             direction = command.split(" ", 1)[1]
@@ -506,13 +493,17 @@ class TextRedirector:
 class AdventureGUI:
     def __init__(self):
         self.root = tk.Tk()
+        self.fullscreen = False
+        self.root.bind("<F11>", self.toggle_fullscreen)
+        self.root.bind("<Escape>", self.exit_fullscreen)
         self.root.title("Adventure Game")
-        self.root.geometry("980x560")
+        self.root.geometry("1280x620")
+        self.root.configure(bg="#111111")
 
-        main_frame = tk.Frame(self.root)
+        main_frame = tk.Frame(self.root, bg="#111111")
         main_frame.pack(fill="both", expand=True)
 
-        self.output_frame = tk.Frame(main_frame)
+        self.output_frame = tk.Frame(main_frame, bg="#111111")
         self.output_frame.pack(side="left", fill="both", expand=True, padx=(10, 5), pady=10)
 
         self.output = tk.Text(
@@ -537,35 +528,16 @@ class AdventureGUI:
             self.map_frame,
             bg="#1a1a1a",
             highlightthickness=0,
-            width=340,
+            width=620,
             height=420,
         )
         self.map_canvas.pack(fill="both", expand=True)
 
-        entry_frame = tk.Frame(self.root)
-        entry_frame.pack(fill="x", padx=10, pady=8)
-
-        self.entry_var = tk.StringVar()
-        self.entry = tk.Entry(entry_frame, textvariable=self.entry_var, font=("Consolas", 11))
-        self.entry.pack(side="left", fill="x", expand=True)
-        self.entry.bind("<Return>", self.on_submit)
-
-        submit = tk.Button(entry_frame, text="Submit", command=self.on_submit)
-        submit.pack(side="right", padx=5)
-
-        self.root.bind("<KeyPress-w>", lambda event: self.send_command("w"))
-        self.root.bind("<KeyPress-W>", lambda event: self.send_command("w"))
-        self.root.bind("<KeyPress-a>", lambda event: self.send_command("a"))
-        self.root.bind("<KeyPress-A>", lambda event: self.send_command("a"))
-        self.root.bind("<KeyPress-s>", lambda event: self.send_command("s"))
-        self.root.bind("<KeyPress-S>", lambda event: self.send_command("s"))
-        self.root.bind("<KeyPress-d>", lambda event: self.send_command("d"))
-        self.root.bind("<KeyPress-D>", lambda event: self.send_command("d"))
-
-        button_frame = tk.Frame(self.root)
+        button_frame = tk.Frame(self.root, bg="#111111")
         button_frame.pack(fill="x", padx=10, pady=(0, 8))
         button_info = [
             ("Map", "map"),
+            ("Pickup", "pickup"),
             ("Question", "question"),
             ("Open", "open"),
             ("Talk", "talk"),
@@ -574,7 +546,9 @@ class AdventureGUI:
             ("Help", "help"),
         ]
         for label, cmd in button_info:
-            tk.Button(button_frame, text=label, command=lambda c=cmd: self.insert_command(c)).pack(side="left", padx=2, pady=2)
+            tk.Button(button_frame, text=label, command=lambda c=cmd: self.submit_command(c)).pack(side="left", padx=2, pady=2)
+
+        self.root.bind("<KeyPress>", self.on_global_keypress)
 
         self.input_ready = threading.Event()
         self.response = ""
@@ -623,6 +597,8 @@ class AdventureGUI:
             fill = "#4b8f8c" if room != current_room else "#f9dc5c"
             self.map_canvas.create_oval(x - radius, y - radius, x + radius, y + radius, fill=fill, outline=outline, width=2)
             self.map_canvas.create_text(x, y, text=room.replace(" ", "\n"), fill="#111111" if room == current_room else "#ffffff", font=("Consolas", 9), justify="center")
+            if room == current_room:
+                self.map_canvas.create_text(x, y + 28, text="@", fill="#111111", font=("Consolas", 14, "bold"))
 
         self.map_canvas.create_text(170, 20, text="Current: " + current_room.title(), fill="#ffffff", font=("Consolas", 11, "bold"))
 
@@ -695,32 +671,35 @@ class AdventureGUI:
         globals()["show_status"] = wrapped_show_status
 
     def on_submit(self, event=None):
-        value = self.entry_var.get().strip()
-        if not value:
+        return
+
+    def submit_command(self, command):
+        if not command:
             return
-        self.response = value
-        self.entry_var.set("")
+        self.response = command
         self.input_ready.set()
 
     def gui_input(self, prompt):
         self.write(prompt)
-        self.entry.focus_set()
         self.response = ""
         self.input_ready.clear()
         self.input_ready.wait()
         return self.response.lower()
 
-    def send_command(self, command):
-        if self.input_ready.is_set():
-            return
-        self.response = command
-        self.entry_var.set(command)
-        self.input_ready.set()
+    def on_global_keypress(self, event):
+        key = event.char.lower()
+        if key in ("w", "a", "s", "d"):
+            self.submit_command(key)
+            return "break"
 
-    def insert_command(self, command):
-        self.entry_var.set(command)
-        self.entry.focus_set()
-        self.entry.selection_range(0, "end")
+    def toggle_fullscreen(self, event=None):
+        self.fullscreen = not self.fullscreen
+        self.root.attributes("-fullscreen", self.fullscreen)
+
+    def exit_fullscreen(self, event=None):
+        if self.fullscreen:
+            self.fullscreen = False
+            self.root.attributes("-fullscreen", False)
 
     def write(self, text):
         self.output.configure(state="normal")
@@ -749,7 +728,6 @@ class AdventureGUI:
 
     def run(self):
         threading.Thread(target=self.start_game, daemon=True).start()
-        self.entry.focus_set()
         self.root.mainloop()
 
 
@@ -767,4 +745,3 @@ def launch_gui():
 
 if __name__ == "__main__":
     launch_gui()
-22
